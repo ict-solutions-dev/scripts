@@ -7,9 +7,7 @@ if [ ! -f .env ]; then
 fi
 
 # Source the .env file
-set -o allexport
-source .env
-set +o allexport
+export $(grep -v '^#' .env | xargs)
 
 if [ -z "$PASSWORD" ]; then
   echo "PASSWORD not set in .env file!"
@@ -38,7 +36,7 @@ for username in "${users[@]}"; do
   adduser --disabled-password --gecos "" "$username"
 
   # Set password
-  echo "$username:$(printf '%q' "$PASSWORD")" | chpasswd
+  echo "$username:$PASSWORD" | chpasswd
 
   # Add user to sudo group
   usermod -aG sudo "$username"

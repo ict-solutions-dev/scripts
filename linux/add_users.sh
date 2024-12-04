@@ -35,7 +35,7 @@ for username in "${users[@]}"; do
   adduser --disabled-password --gecos "" "$username"
 
   # Set password
-  echo "$username:$PASSWORD" | chpasswd
+  echo "$username:$(printf '%q' "$PASSWORD")" | chpasswd
 
   # Add user to sudo group
   usermod -aG sudo "$username"

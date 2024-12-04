@@ -6,7 +6,10 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# Source the .env file
+set -o allexport
 source .env
+set +o allexport
 
 if [ -z "$PASSWORD" ]; then
   echo "PASSWORD not set in .env file!"

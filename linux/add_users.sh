@@ -25,6 +25,12 @@ while IFS=, read -r username; do
 done < .users.csv
 
 for username in "${users[@]}"; do
+  # Check if user already exists
+  if id "$username" &>/dev/null; then
+    echo "User $username already exists. Skipping..."
+    continue
+  fi
+
   # Add user
   adduser --disabled-password --gecos "" "$username"
 

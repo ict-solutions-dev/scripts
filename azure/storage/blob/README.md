@@ -19,19 +19,24 @@ This script automates the process of downloading blobs from an Azure Storage con
 
 1. Clone the repository to a local directory:
     ```sh
-    git clone https://github.com/ict-solutions-dev/scripts.git
-    cd /azure/storage/blob
+    git clone --depth 1 --filter=blob:none --sparse https://github.com/ict-solutions-dev/scripts.git backups
+    cd backups
+    git sparse-checkout set azure/storage/blob
+    mv azure/storage/blob/* .
+    rm -rf azure
     ```
 
 2. Create a `.env` file with the following content:
     ```sh
     echo "ACCOUNT_NAME=your_account_name" > .env
     echo "SOURCE_CONTAINER=your_source_container" >> .env
-    echo "DESTINATION_PATH=/path/to/destination" >> .env
+    echo "DESTINATION_PATH=" >> .env
     echo "SAS_TOKEN=your_sas_token" >> .env
     ```
 
-3. Run the script:
+3. Update the `.env` file with your actual account name, source container, destination path, and SAS token.
+
+4. Run the script:
     ```sh
     ./download.sh
     ```

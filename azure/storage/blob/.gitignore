@@ -4,3 +4,6 @@
 # Ignore backup files
 *.sql.gz
 *.sql.gz.sha1
+
+# Ignore log files
+*.log

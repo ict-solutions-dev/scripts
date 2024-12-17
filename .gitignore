@@ -1,0 +1,6 @@
+# Ignore environment files
+.env
+
+# Ignore backup files
+*.sql.gz
+*.sql.gz.sha1

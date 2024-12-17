@@ -52,7 +52,7 @@ To automate the download process, you can set up a cron job to run the `download
     ./setup_cron.sh
     ```
 
-2. The script will prompt you to enter a custom cron schedule or use the default schedule (every day at 00:01). Enter your desired schedule or press Enter to use the default.
+2. The script will prompt you to enter a custom cron schedule or use the default schedule (every day at 01:00). Enter your desired schedule or press Enter to use the default.
 
 The cron job will be added to your crontab and will run the `download.sh` script at the specified schedule.
 

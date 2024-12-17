@@ -7,12 +7,12 @@ DEFAULT_SCHEDULE="0 1 * * *"
 read -p "Enter the cron schedule for running the download script (default: '$DEFAULT_SCHEDULE'): " CRON_SCHEDULE
 CRON_SCHEDULE=${CRON_SCHEDULE:-$DEFAULT_SCHEDULE}
 
-# Get the absolute path of the download.sh script
+# Get the absolute path of the download.sh script and its directory
 SCRIPT_PATH=$(realpath download.sh)
-ENV_FILE=$(realpath .env)
+SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
 
-# Add the cron job with output redirection to a log file
-(crontab -l 2>/dev/null; echo "$CRON_SCHEDULE /bin/bash -c 'source $ENV_FILE && $SCRIPT_PATH; logger -t download_script \"Download script ran at \$(date)\"' >> /var/log/download_script.log 2>&1") | crontab -
+# Add the cron job with logging to syslog
+(crontab -l 2>/dev/null; echo "$CRON_SCHEDULE cd $SCRIPT_DIR && /bin/bash download.sh && logger -t azure-blob-download \"Download script ran at \$(date)\"") | crontab -
 
 echo "Cron job set to run the download script at the following schedule: $CRON_SCHEDULE"
-echo "Output will be logged to /var/log/download_script.log"
+echo "Output will be logged to syslog with the tag 'azure-blob-download'"

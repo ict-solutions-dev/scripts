@@ -11,6 +11,6 @@ CRON_SCHEDULE=${CRON_SCHEDULE:-$DEFAULT_SCHEDULE}
 SCRIPT_PATH=$(realpath download.sh)
 
 # Add the cron job
-(crontab -l 2>/dev/null; echo "$CRON_SCHEDULE /bin/bash $SCRIPT_PATH 2>&1 | logger -t download_script") | crontab -
+(crontab -l 2>/dev/null; echo "$CRON_SCHEDULE /bin/bash -c '$SCRIPT_PATH; logger -t download_script \"Download script ran at \$(date)\"'") | crontab -
 
 echo "Cron job set to run the download script at the following schedule: $CRON_SCHEDULE"

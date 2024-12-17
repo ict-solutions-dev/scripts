@@ -19,7 +19,7 @@ This script automates the process of downloading blobs from an Azure Storage con
 
 1. Clone the repository to a local directory:
     ```sh
-    https://github.com/ict-solutions-dev/scripts.git
+    git clone https://github.com/ict-solutions-dev/scripts.git
     cd /azure/storage/blob
     ```
 

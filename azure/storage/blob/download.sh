@@ -1,11 +1,8 @@
 #!/bin/bash
 
-# Load environment variables from .env file
+# Load environment variables from .env file if it exists
 if [ -f .env ]; then
-    export $(cat .env | xargs)
-else
-    echo ".env file not found. Please create a .env file with the required environment variables."
-    exit 1
+    export $(grep -v '^#' .env | xargs)
 fi
 
 # Check if Azure CLI is installed, if not install it

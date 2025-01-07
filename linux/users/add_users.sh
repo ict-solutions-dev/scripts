@@ -25,6 +25,7 @@ while IFS=, read -r username; do
   users+=("$username")
 done < .users.csv
 
+# Add users from .users.csv
 for username in "${users[@]}"; do
   # Check if user already exists
   if id "$username" &>/dev/null; then
@@ -43,6 +44,29 @@ for username in "${users[@]}"; do
 
   # Expire password
   passwd --expire "$username"
+done
+
+# Get list of existing users with UID 1000 or more
+existing_users=$(awk -F: '$3 >= 1000 {print $1}' /etc/passwd)
+
+# Delete users not in .users.csv
+for existing_user in $existing_users; do
+  # Skip system users like 'nobody'
+  if [[ "$existing_user" == "nobody" ]]; then
+    echo "Skipping system user $existing_user..."
+    continue
+  fi
+
+  if [[ ! " ${users[@]} " =~ " ${existing_user} " ]]; then
+    # Check if the user has running processes
+    if pgrep -u "$existing_user" > /dev/null; then
+      echo "User $existing_user has running processes. Skipping deletion..."
+      continue
+    fi
+
+    echo "Deleting user $existing_user..."
+    userdel -r "$existing_user"
+  fi
 done
 
 # Remove .env and .users.csv files

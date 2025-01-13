@@ -1,5 +1,32 @@
 #!/bin/bash
 
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Emojis
+ROCKET="🚀"
+CHECK="✅"
+WARNING="⚠️"
+INFO="ℹ️"
+ERROR="❌"
+USER="👤"
+GROUP="👥"
+
+# Counters
+users_added=0
+users_existed=0
+groups_added=0
+
+# Define required groups
+REQUIRED_GROUPS=("sudo")
+if command -v docker &>/dev/null; then
+    REQUIRED_GROUPS+=("docker")
+fi
+
 # Load password from .env file
 if [ ! -f .env ]; then
   echo ".env file not found!"
@@ -25,25 +52,30 @@ while IFS=, read -r username; do
   users+=("$username")
 done < .users.csv
 
-# Add users from .users.csv
+# Process users from .users.csv
 for username in "${users[@]}"; do
-  # Check if user already exists
-  if id "$username" &>/dev/null; then
-    echo "User $username already exists. Skipping..."
-    continue
-  fi
+    # Check if user exists
+    if ! id "$username" &>/dev/null; then
+        echo -e "${GREEN}${ROCKET} Creating new user ${USER} ${username}...${NC}"
+        adduser --disabled-password --gecos "" "$username"
+        echo "$username:$PASSWORD" | chpasswd
+        passwd --expire "$username"
+        ((users_added++))
+    else
+        echo -e "${BLUE}${INFO} User ${USER} ${username} exists${NC}"
+        ((users_existed++))
+    fi
 
-  # Add user
-  adduser --disabled-password --gecos "" "$username"
-
-  # Set password
-  echo "$username:$PASSWORD" | chpasswd
-
-  # Add user to sudo group
-  usermod -aG sudo "$username"
-
-  # Expire password
-  passwd --expire "$username"
+    # Manage group memberships
+    for group in "${REQUIRED_GROUPS[@]}"; do
+        if ! groups "$username" | grep -q "\b${group}\b"; then
+            usermod -aG "$group" "$username"
+            echo -e "${GREEN}${CHECK} Added ${USER} ${username} to ${GROUP} ${group} group${NC}"
+            ((groups_added++))
+        else
+            echo -e "${YELLOW}${WARNING} User ${username} already in group ${group}${NC}"
+        fi
+    done
 done
 
 # Get list of existing users with UID 1000 or more
@@ -51,25 +83,28 @@ existing_users=$(awk -F: '$3 >= 1000 {print $1}' /etc/passwd)
 
 # Delete users not in .users.csv
 for existing_user in $existing_users; do
-  # Skip system users like 'nobody'
-  if [[ "$existing_user" == "nobody" ]]; then
-    echo "Skipping system user $existing_user..."
-    continue
-  fi
-
-  if [[ ! " ${users[@]} " =~ " ${existing_user} " ]]; then
-    # Check if the user has running processes
-    if pgrep -u "$existing_user" > /dev/null; then
-      echo "User $existing_user has running processes. Skipping deletion..."
-      continue
+    if [[ "$existing_user" == "nobody" ]]; then
+        echo -e "${YELLOW}${WARNING} Skipping system user ${existing_user}...${NC}"
+        continue
     fi
 
-    echo "Deleting user $existing_user..."
-    userdel -r "$existing_user"
-  fi
+    if [[ ! " ${users[@]} " =~ " ${existing_user} " ]]; then
+        if pgrep -u "$existing_user" > /dev/null; then
+            echo -e "${RED}${ERROR} User ${existing_user} has running processes. Skipping deletion...${NC}"
+            continue
+        fi
+        echo -e "${RED}${ERROR} Deleting user ${existing_user}...${NC}"
+        userdel -r "$existing_user"
+    fi
 done
+
+# Summary
+echo -e "\n${BLUE}${ROCKET} Summary:${NC}"
+echo -e "${GREEN}${CHECK} New users added: ${users_added}${NC}"
+echo -e "${BLUE}${INFO} Existing users: ${users_existed}${NC}"
+echo -e "${GREEN}${GROUP} Group additions: ${groups_added}${NC}"
 
 # Remove .env and .users.csv files
 rm .env .users.csv
 
-echo "Users added and configured successfully."
+echo -e "\n${GREEN}${ROCKET} Users added and configured successfully!${NC}"

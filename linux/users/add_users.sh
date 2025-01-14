@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Version
+VERSION="1.0"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -52,17 +56,27 @@ while IFS=, read -r username; do
   users+=("$username")
 done < .users.csv
 
+# Print header
+echo -e "\n${BLUE}═══════════════════════════════════════════${NC}"
+echo -e "${BLUE}${ROCKET} User Management Script v${VERSION}${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════${NC}"
+echo -e "Started: ${TIMESTAMP}\n"
+
 # Process users from .users.csv
 for username in "${users[@]}"; do
+    echo -e "${BLUE}┌─── Processing User ───────────────────┐${NC}"
+    echo -e "${BLUE}│${NC} ${USER} ${username}"
+    echo -e "${BLUE}├────────────────────────────────────────┤${NC}"
+
     # Check if user exists
     if ! id "$username" &>/dev/null; then
-        echo -e "${GREEN}${ROCKET} Creating new user ${USER} ${username}...${NC}"
+        echo -e "${BLUE}│${NC} ${GREEN}${ROCKET} Status: Created new user${NC}"
         adduser --disabled-password --gecos "" "$username"
         echo "$username:$PASSWORD" | chpasswd
         passwd --expire "$username"
         ((users_added++))
     else
-        echo -e "${BLUE}${INFO} User ${USER} ${username} exists${NC}"
+        echo -e "${BLUE}│${NC} ${BLUE}${INFO} Status: Existing user${NC}"
         ((users_existed++))
     fi
 
@@ -70,41 +84,45 @@ for username in "${users[@]}"; do
     for group in "${REQUIRED_GROUPS[@]}"; do
         if ! groups "$username" | grep -q "\b${group}\b"; then
             usermod -aG "$group" "$username"
-            echo -e "${GREEN}${CHECK} Added ${USER} ${username} to ${GROUP} ${group} group${NC}"
+            echo -e "${BLUE}│${NC} ${GREEN}${CHECK} Added to group: ${group}${NC}"
             ((groups_added++))
         else
-            echo -e "${YELLOW}${WARNING} User ${username} already in group ${group}${NC}"
+            echo -e "${BLUE}│${NC} ${YELLOW}${WARNING} Already in group: ${group}${NC}"
         fi
     done
+    echo -e "${BLUE}└────────────────────────────────────────┘${NC}\n"
 done
 
 # Get list of existing users with UID 1000 or more
 existing_users=$(awk -F: '$3 >= 1000 {print $1}' /etc/passwd)
 
-# Delete users not in .users.csv
+# User cleanup section
+echo -e "${BLUE}┌─── User Cleanup ────────────────────────┐${NC}"
 for existing_user in $existing_users; do
     if [[ "$existing_user" == "nobody" ]]; then
-        echo -e "${YELLOW}${WARNING} Skipping system user ${existing_user}...${NC}"
+        echo -e "${BLUE}│${NC} ${YELLOW}${WARNING} Skipping system user: ${existing_user}${NC}"
         continue
     fi
 
     if [[ ! " ${users[@]} " =~ " ${existing_user} " ]]; then
         if pgrep -u "$existing_user" > /dev/null; then
-            echo -e "${RED}${ERROR} User ${existing_user} has running processes. Skipping deletion...${NC}"
+            echo -e "${BLUE}│${NC} ${RED}${ERROR} Active user (skipped): ${existing_user}${NC}"
             continue
         fi
-        echo -e "${RED}${ERROR} Deleting user ${existing_user}...${NC}"
+        echo -e "${BLUE}│${NC} ${RED}${ERROR} Removed user: ${existing_user}${NC}"
         userdel -r "$existing_user"
     fi
 done
+echo -e "${BLUE}└────────────────────────────────────────┘${NC}\n"
 
-# Summary
-echo -e "\n${BLUE}${ROCKET} Summary:${NC}"
-echo -e "${GREEN}${CHECK} New users added: ${users_added}${NC}"
-echo -e "${BLUE}${INFO} Existing users: ${users_existed}${NC}"
-echo -e "${GREEN}${GROUP} Group additions: ${groups_added}${NC}"
+# Summary box with padding
+echo -e "${BLUE}╔═══════════════════ Summary ═══════════════════╗${NC}"
+printf "${BLUE}║${NC} %-44s ${BLUE}║${NC}\n" "${GREEN}${CHECK} New users added:    ${users_added}"
+printf "${BLUE}║${NC} %-44s ${BLUE}║${NC}\n" "${BLUE}${INFO} Existing users:     ${users_existed}"
+printf "${BLUE}║${NC} %-44s ${BLUE}║${NC}\n" "${GREEN}${GROUP} Groups modified:    ${groups_added}"
+echo -e "${BLUE}╚═══════════════════════════════════════════════╝${NC}\n"
 
-# Remove .env and .users.csv files
+# Cleanup
 rm .env .users.csv
 
-echo -e "\n${GREEN}${ROCKET} Users added and configured successfully!${NC}"
+echo -e "${GREEN}${ROCKET} Operation completed successfully!${NC}\n"

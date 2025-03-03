@@ -3,4 +3,4 @@
 
 # Ignore users.csv file
 .users.csv
-pdns-ptr-update.log
+*pdns-ptr-update.log

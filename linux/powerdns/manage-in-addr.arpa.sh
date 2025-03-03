@@ -9,24 +9,52 @@ else
 fi
 
 # PowerDNS API configuration with defaults
-PDNS_API_URL="${PDNS_API_URL:-http://localhost:8081}"
+PDNS_API_URL="${PDNS_API_URL}"
 PDNS_API_KEY="${PDNS_API_KEY}"
 SERVER_ID="${SERVER_ID:-localhost}"
 
 # Validate required environment variables
-if [ "$PDNS_API_KEY" = "your-api-key" ]; then
+if [ -z "$PDNS_API_KEY" ] || [ "$PDNS_API_KEY" = "your-api-key" ]; then
     echo "Error: PDNS_API_KEY not configured in .env file"
+    exit 1
+fi
+
+# Validate API endpoint
+if [[ ! "$PDNS_API_URL" =~ ^https?:// ]]; then
+    echo "Error: Invalid PDNS_API_URL format. Must start with http:// or https://"
     exit 1
 fi
 
 # Array of zones to exclude
 EXCLUDED_ZONES=(
-    "64.100.in-addr.arpa.",
-    "168.237.91.in-addr.arpa.",
-    "169.237.91.in-addr.arpa.",
-    "170.237.91.in-addr.arpa.",
-    # Add more zones to exclude here
+    "64.100.in-addr.arpa."
+    "168.237.91.in-addr.arpa."
+    "169.237.91.in-addr.arpa."
+    "170.237.91.in-addr.arpa."
 )
+
+# Add logging configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_FILE="${SCRIPT_DIR}/pdns-ptr-update.log"
+LOG_DIR="$(dirname "$LOG_FILE")"
+
+# Setup logging directory
+if [ ! -d "$LOG_DIR" ]; then
+    mkdir -p "$LOG_DIR" || {
+        echo "ERROR: Cannot create log directory $LOG_DIR"
+        exit 1
+    }
+fi
+
+if [ ! -w "$LOG_DIR" ]; then
+    echo "ERROR: Log directory $LOG_DIR is not writable"
+    exit 1
+fi
+
+# Initialize counters
+PROCESSED_ZONES=0
+CREATED_RECORDS=0
+SKIPPED_ZONES=0
 
 # Function to show usage
 show_usage() {
@@ -46,6 +74,29 @@ show_usage() {
     echo "  $0 create-ptr 192.168.0.1 host-1-0-168-192.e-max.sk."
     echo "  $0 process-zone 0.168.192.in-addr.arpa."
     exit 1
+}
+
+# Function to check curl status
+check_curl_status() {
+    if [ $? -ne 0 ]; then
+        log_message "ERROR: API request failed"
+        exit 1
+    fi
+}
+
+# Function to validate IP address
+validate_ip() {
+    local ip=$1
+    if [[ ! $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        return 1
+    fi
+    IFS='.' read -r -a octets <<< "$ip"
+    for octet in "${octets[@]}"; do
+        if [[ $octet -lt 0 || $octet -gt 255 ]]; then
+            return 1
+        fi
+    done
+    return 0
 }
 
 # Function to check if zone should be excluded
@@ -69,29 +120,41 @@ ip_to_reverse() {
 # Function to get reverse zone for an IP
 get_reverse_zone() {
     local ip=$1
+    if ! validate_ip "$ip"; then
+        log_message "ERROR: Invalid IP address format: $ip"
+        return 1
+    fi
     IFS='.' read -r a b c d <<< "$ip"
-    echo "${c}.${b}.${a}.in-addr.arpa"
+    echo "${c}.${b}.${a}.in-addr.arpa."
 }
 
 # Function to list all reverse zones
 list_reverse_zones() {
-    curl -s -H "X-API-Key: ${PDNS_API_KEY}" \
-        "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones" | \
-        jq -r '.[] | select(.name | endswith(".in-addr.arpa.")) | .name'
+    local response=$(curl -s -H "X-API-Key: ${PDNS_API_KEY}" \
+        "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones")
+    check_curl_status
+    echo "$response" | jq -r '.[] | select(.name | endswith(".in-addr.arpa.")) | .name'
 }
 
 # Function to get existing PTR records for a zone
 get_zone_records() {
     local zone=$1
-    curl -s -H "X-API-Key: ${PDNS_API_KEY}" \
-        "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones/${zone}" | \
-        jq -r '.rrsets[] | select(.type=="PTR") | .name'
+    local response=$(curl -s -H "X-API-Key: ${PDNS_API_KEY}" \
+        "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones/${zone}")
+    check_curl_status
+    echo "$response" | jq -r '.rrsets[] | select(.type=="PTR") | .name'
 }
 
 # Function to create PTR record
 create_ptr_record() {
     local ip=$1
     local hostname=$2
+
+    if ! validate_ip "$ip"; then
+        log_message "ERROR: Invalid IP address format: $ip"
+        return 1
+    fi
+
     local zone=$(get_reverse_zone "$ip")
     IFS='.' read -r a b c d <<< "$ip"
 
@@ -108,17 +171,13 @@ create_ptr_record() {
         }]
     }"
 
-    curl -s -X PATCH -H "X-API-Key: ${PDNS_API_KEY}" \
+    local response=$(curl -s -X PATCH -H "X-API-Key: ${PDNS_API_KEY}" \
          -H "Content-Type: application/json" \
          -d "${json_data}" \
-         "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones/${zone}"
+         "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones/${zone}")
+    check_curl_status
+    echo "$response"
 }
-
-# Add logging configuration
-LOG_FILE="/var/log/pdns-ptr-update.log"
-PROCESSED_ZONES=0
-CREATED_RECORDS=0
-SKIPPED_ZONES=0
 
 # Function to log messages
 log_message() {
@@ -126,7 +185,7 @@ log_message() {
     echo "[${timestamp}] $1" | tee -a "$LOG_FILE"
 }
 
-# Add summary function
+# Function to print summary
 print_summary() {
     log_message "=== Summary ==="
     log_message "Processed zones: $PROCESSED_ZONES"
@@ -135,23 +194,24 @@ print_summary() {
     log_message "=============="
 }
 
-# Update process_zone function
+# Function to process zone
 process_zone() {
     local zone=$1
 
-    # Check if zone should be excluded
     if is_excluded_zone "$zone"; then
         log_message "Skipping excluded zone: $zone"
         ((SKIPPED_ZONES++))
         return
-    }
+    fi
 
     log_message "Processing zone: $zone"
     ((PROCESSED_ZONES++))
 
-    # ...existing network_parts and existing_records code...
+    local network_parts=($(echo "${zone%%.in-addr.arpa.}" | tr '.' ' ' | tac))
+    local network_prefix="${network_parts[0]}.${network_parts[1]}.${network_parts[2]}"
 
-    # Check all possible IPs in the /24 zone
+    local existing_records=$(get_zone_records "$zone")
+
     for i in {0..255}; do
         local ip="${network_prefix}.$i"
         local ptr_name="${i}.${zone}."
@@ -166,9 +226,7 @@ process_zone() {
     done
 }
 
-# Modify main script to handle parameters
-
-# Update main function
+# Main function
 main() {
     log_message "Starting PowerDNS PTR record management"
 

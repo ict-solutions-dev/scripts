@@ -227,7 +227,7 @@ process_zone() {
     log_message "Processing zone: $zone"
     ((PROCESSED_ZONES++))
 
-    local network_parts=($(echo "${zone%%.in-addr.arpa.}" | tr '.' ' ' | tac))
+    local network_parts=($(echo "${zone%%.in-addr.arpa.}" | tr '.' '\n' | awk '{a[i++]=$0} END {for (j=i-1; j>=0;) print a[j--]}' | tr '\n' ' '))
     local network_prefix="${network_parts[0]}.${network_parts[1]}.${network_parts[2]}"
 
     local existing_records=$(get_zone_records "$zone")

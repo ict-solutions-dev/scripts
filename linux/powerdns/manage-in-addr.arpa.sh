@@ -110,11 +110,11 @@ is_excluded_zone() {
     return 1
 }
 
-# Function to convert IP to reverse format
-ip_to_reverse() {
+# Function to convert IP to expected format
+format_ip() {
     local ip=$1
     IFS='.' read -r a b c d <<< "$ip"
-    echo "${d}-${c}-${b}-${a}"
+    echo "${a}-${b}-${c}-${d}"
 }
 
 # Function to get reverse zone for an IP
@@ -150,17 +150,30 @@ create_ptr_record() {
     local ip=$1
     local hostname=$2
 
+    # Ensure hostname ends with a dot
+    [[ "${hostname}" != *"." ]] && hostname="${hostname}."
+
+    log_message "Attempting to create PTR record..."
+    log_message "Input: IP=$ip, Hostname=$hostname"
+
     if ! validate_ip "$ip"; then
         log_message "ERROR: Invalid IP address format: $ip"
         return 1
     fi
 
     local zone=$(get_reverse_zone "$ip")
+    log_message "Using reverse zone: $zone"
+
     IFS='.' read -r a b c d <<< "$ip"
+    local ptr_name="${d}.${zone}"
+    # Ensure PTR name ends with a dot
+    [[ "${ptr_name}" != *"." ]] && ptr_name="${ptr_name}."
+
+    log_message "Creating PTR record with name: ${ptr_name}"
 
     local json_data="{
         \"rrsets\": [{
-            \"name\": \"${d}.${zone}.\",
+            \"name\": \"${ptr_name}\",
             \"type\": \"PTR\",
             \"ttl\": 3600,
             \"changetype\": \"REPLACE\",
@@ -171,11 +184,18 @@ create_ptr_record() {
         }]
     }"
 
+    log_message "Sending API request to PowerDNS..."
     local response=$(curl -s -X PATCH -H "X-API-Key: ${PDNS_API_KEY}" \
          -H "Content-Type: application/json" \
          -d "${json_data}" \
          "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones/${zone}")
-    check_curl_status
+
+    if check_curl_status; then
+        log_message "Successfully created PTR record for ${ip} -> ${hostname}"
+    else
+        log_message "ERROR: Failed to create PTR record. API response: $response"
+    fi
+
     echo "$response"
 }
 
@@ -218,7 +238,7 @@ process_zone() {
 
         if ! echo "$existing_records" | grep -q "^${ptr_name}$"; then
             log_message "Adding missing PTR record for $ip"
-            local reverse_hostname="host-$(ip_to_reverse "$ip")"
+            local reverse_hostname="host-$(format_ip "$ip")"
             create_ptr_record "$ip" "${reverse_hostname}.e-max.sk."
             log_message "Created PTR record: $ip -> ${reverse_hostname}.e-max.sk"
             ((CREATED_RECORDS++))

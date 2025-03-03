@@ -222,7 +222,7 @@ process_zone() {
         log_message "Skipping excluded zone: $zone"
         ((SKIPPED_ZONES++))
         return
-    }
+    fi
 
     log_message "Processing zone: $zone"
     ((PROCESSED_ZONES++))

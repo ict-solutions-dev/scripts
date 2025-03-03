@@ -237,7 +237,7 @@ process_zone() {
 
     for i in {0..255}; do
         local ip="${network_prefix}.$i"
-        local ptr_name="${i}.${zone}."
+        local ptr_name="${i}.${zone}"
 
         # Check if this IP already has a PTR record
         if ! echo "$existing_records" | grep -q "^${ptr_name}"$'\t'; then

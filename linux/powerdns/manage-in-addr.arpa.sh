@@ -222,7 +222,7 @@ process_zone() {
         log_message "Skipping excluded zone: $zone"
         ((SKIPPED_ZONES++))
         return
-    fi
+    }
 
     log_message "Processing zone: $zone"
     ((PROCESSED_ZONES++))
@@ -230,18 +230,24 @@ process_zone() {
     local network_parts=($(echo "${zone%%.in-addr.arpa.}" | tr '.' '\n' | awk '{a[i++]=$0} END {for (j=i-1; j>=0;) print a[j--]}' | tr '\n' ' '))
     local network_prefix="${network_parts[0]}.${network_parts[1]}.${network_parts[2]}"
 
-    local existing_records=$(get_zone_records "$zone")
+    # Get all existing PTR records for the zone with their content
+    local existing_records=$(curl -s -H "X-API-Key: ${PDNS_API_KEY}" \
+        "${PDNS_API_URL}/api/v1/servers/${SERVER_ID}/zones/${zone}" | \
+        jq -r '.rrsets[] | select(.type=="PTR") | [.name, (.records[0].content // "null")] | @tsv')
 
     for i in {0..255}; do
         local ip="${network_prefix}.$i"
         local ptr_name="${i}.${zone}."
 
-        if ! echo "$existing_records" | grep -q "^${ptr_name}$"; then
+        # Check if this IP already has a PTR record
+        if ! echo "$existing_records" | grep -q "^${ptr_name}"$'\t'; then
             log_message "Adding missing PTR record for $ip"
             local reverse_hostname="host-$(format_ip "$ip")"
             create_ptr_record "$ip" "${reverse_hostname}.e-max.sk."
             log_message "Created PTR record: $ip -> ${reverse_hostname}.e-max.sk"
             ((CREATED_RECORDS++))
+        else
+            log_message "Skipping $ip - PTR record already exists"
         fi
     done
 }
